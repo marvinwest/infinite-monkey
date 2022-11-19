@@ -4,15 +4,18 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 
+import org.apache.kafka.common.Uuid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
+import de.marvinwest.infinitemonkey.Constants;
 import de.marvinwest.infinitemonkey.model.MonkeysTypingRun;
 import de.marvinwest.infinitemonkey.model.TextHit;
 
@@ -20,8 +23,8 @@ import de.marvinwest.infinitemonkey.model.TextHit;
 @EnableScheduling
 public class TextHitCalculationScheduler {
 	
-	private static final List<String> ALPHABET = List.of("a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z");
-	private static final String TARGET_TEXT = "loremipsumdolorsitament";
+	private static final List<String> ALPHABET = List.of(" ", "a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z");
+	private static final String TARGET_TEXT = "lorem ipsum dolor sit ament";
 	private static final int PERSISTANCE_THRESHOLD = 2;
 	
 	private final Logger logger = LoggerFactory.getLogger(TextHitCalculationScheduler.class);
@@ -32,10 +35,16 @@ public class TextHitCalculationScheduler {
 	@Autowired
 	private MonkeysTypingRunRepository runRepository;
 	
+	final KafkaTemplate<String, Object> kafkaTemplate;
+	
 	private TextHitState currentState;
 	private TextHitState nextState;
 	
 	private boolean initialized = false;
+	
+	public TextHitCalculationScheduler(KafkaTemplate<String, Object> kafkaTemplate) {
+		this.kafkaTemplate = kafkaTemplate;
+	}
 	
 	@EventListener(ApplicationReadyEvent.class)
 	private void afterStartUp() {
@@ -49,6 +58,8 @@ public class TextHitCalculationScheduler {
 		if (initialized) {
 			var nextCharacter = this.fetchRandomCharacterFromAlphabet();
 			this.nextState = new TextHitState(nextCharacter);
+			logger.info(nextState.getCurrentText());
+			this.sendToKafka(nextState.getCurrentText());
 			this.currentStateUpdateCalculation();
 		}
 	}
@@ -101,6 +112,10 @@ public class TextHitCalculationScheduler {
 			var textHitToPersist = new TextHit(currentRun, finalTextHit);
 			this.hitRepository.save(textHitToPersist);
 		}
+	}
+	
+	private void sendToKafka(String chosenLetter) {
+		this.kafkaTemplate.send(Constants.MONKEY_TOPIC, Uuid.randomUuid().toString(), chosenLetter);		
 	}
 	
 }
