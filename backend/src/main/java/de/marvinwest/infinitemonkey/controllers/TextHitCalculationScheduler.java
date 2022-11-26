@@ -1,28 +1,23 @@
 package de.marvinwest.infinitemonkey.controllers;
 
-import java.util.Comparator;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Random;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import de.marvinwest.infinitemonkey.model.MonkeysTypingRun;
 import de.marvinwest.infinitemonkey.model.TextHit;
 
+// MONOLITHIC: REFACTOR HARD! Javadoc missing!
 @Configuration
 @EnableScheduling
 public class TextHitCalculationScheduler {
-	
-	private static final List<String> ALPHABET = List.of("a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z");
-	private static final String TARGET_TEXT = "loremipsumdolorsitament";
-	private static final int PERSISTANCE_THRESHOLD = 2;
 	
 	private final Logger logger = LoggerFactory.getLogger(TextHitCalculationScheduler.class);
 	
@@ -35,19 +30,29 @@ public class TextHitCalculationScheduler {
 	private TextHitState currentState;
 	private TextHitState nextState;
 	
-	private boolean initialized = false;
+	private MonkeysTypingRun currentRun;
 	
-	@EventListener(ApplicationReadyEvent.class)
-	private void afterStartUp() {
+	private boolean initialized = false;
+		
+	public void startRun(MonkeysTypingRun run) {
+		this.initialized = false;
+		this.logger.info("A new run is started ...");
+		if (this.currentRun != null) {
+			currentRun.setEndTime(LocalDateTime.now());
+			runRepository.save(currentRun);
+		}
+		this.currentRun = run;
 		var character = fetchRandomCharacterFromAlphabet();
 		this.currentState = new TextHitState(character);
 		this.initialized = true;
+		
 	}
 
 	@Scheduled(fixedDelay = 1000)
 	public void calculateTextHit() {
 		if (initialized) {
 			var nextCharacter = this.fetchRandomCharacterFromAlphabet();
+			logger.info("new calculation, new character: " + nextCharacter);
 			this.nextState = new TextHitState(nextCharacter);
 			this.currentStateUpdateCalculation();
 		}
@@ -55,7 +60,8 @@ public class TextHitCalculationScheduler {
 	
 	private String fetchRandomCharacterFromAlphabet() {
 		Random rand = new Random();
-		return ALPHABET.get(rand.nextInt(ALPHABET.size()));
+		List<String> alphabet = currentRun.getAlphabet();
+		return alphabet.get(rand.nextInt(alphabet.size()));
 	}
 	
 	private void currentStateUpdateCalculation() {
@@ -69,33 +75,39 @@ public class TextHitCalculationScheduler {
 	private void futureStateUpdateCalculation() {
 		if (isFutureStateValid()) {
 			this.currentState.addTextHit(nextState.getCurrentText());
+			if (currentState.getCurrentText().equals(currentRun.getTargetText())) {
+				var textHitToPersist = new TextHit(currentRun, currentState.getCurrentText());
+				this.hitRepository.save(textHitToPersist);
+				this.currentRun.setEndTime(LocalDateTime.now());
+				this.runRepository.save(currentRun);
+				
+				this.currentRun = null;
+				this.initialized = false;
+				this.logger.info("A run was finished.");
+			}
 		} else {
-			maybePersistCurrentState(currentState);
+			currentRun.maybePersistanceThreshold()
+				.ifPresent(threshold -> this.maybePersistCurrentState(threshold, currentState));
 			this.currentState = this.nextState;
 		}
 	}
 	
 	private boolean isCurrentStateValid() {
-		var currentStateExpected = TARGET_TEXT.substring(0, currentState.getEndIndex());
+		var currentStateExpected = currentRun.getTargetText().substring(0, currentState.getEndIndex());
 		var currentStateGiven = currentState.getCurrentText();
 		return currentStateExpected.equals(currentStateGiven);
 	}
 	
 	private boolean isFutureStateValid() {
-		var futureStateExpected = TARGET_TEXT.substring(0, currentState.getEndIndex() + nextState.getEndIndex());
 		var futureStateGiven = currentState.getCurrentText() + nextState.getCurrentText();
+		var futureStateExpected = currentRun.getTargetText().substring(0, currentState.getEndIndex() + nextState.getEndIndex());
 		return  futureStateExpected.equals(futureStateGiven);
 	}
 	
-	private void maybePersistCurrentState(TextHitState stateToPersist) {
-		if (stateToPersist.getEndIndex() >= PERSISTANCE_THRESHOLD) {
+	// No Persistance after starting runs via POST
+	private void maybePersistCurrentState(Integer persistanceThreshold, TextHitState stateToPersist) {
+		if (stateToPersist.getEndIndex() >= persistanceThreshold) {
 			logger.info("Persist State at: " + stateToPersist.getCurrentText());
-			
-			Comparator<MonkeysTypingRun> runStartTimeComparator = Comparator.comparing(MonkeysTypingRun::getStartTime);
-			var currentRun = runRepository.findAll()
-					.stream()
-					.max(runStartTimeComparator)
-					.orElseThrow(() -> new IllegalStateException("At least one run has to be persisted"));
 			
 			var finalTextHit = stateToPersist.getCurrentText();
 			var textHitToPersist = new TextHit(currentRun, finalTextHit);
