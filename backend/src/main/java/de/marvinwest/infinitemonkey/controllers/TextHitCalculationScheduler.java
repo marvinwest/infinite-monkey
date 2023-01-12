@@ -15,6 +15,7 @@ import de.marvinwest.infinitemonkey.model.MonkeysTypingRun;
 import de.marvinwest.infinitemonkey.model.TextHit;
 
 // MONOLITHIC: REFACTOR HARD! Javadoc missing!
+// Scheduler seems to fast, logs suggest, that a new character is added before persistance
 @Configuration
 @EnableScheduling
 public class TextHitCalculationScheduler {
@@ -60,7 +61,7 @@ public class TextHitCalculationScheduler {
 	
 	private String fetchRandomCharacterFromAlphabet() {
 		Random rand = new Random();
-		List<String> alphabet = currentRun.getAlphabet();
+		List<String> alphabet = currentRun.buildDistinctAlphabet();
 		return alphabet.get(rand.nextInt(alphabet.size()));
 	}
 	

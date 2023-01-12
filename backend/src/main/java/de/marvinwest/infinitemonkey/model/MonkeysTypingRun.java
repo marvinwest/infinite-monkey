@@ -53,12 +53,19 @@ public class MonkeysTypingRun {
 	public String getTargetText() {
 		return targetText;
 	}
+	
+	public String getAlphabet() {
+		return alphabet;
+	}
 
 	/**
 	 * Converts the single String of allowed characters into a list of Strings.
 	 */
-	public List<String> getAlphabet() {
-		return Arrays.stream(alphabet.split("")).distinct().toList();
+	public List<String> buildDistinctAlphabet() {
+		return Arrays
+				.stream(alphabet.split(""))
+				.distinct()
+				.toList();
 	}
 
 	public LocalDateTime getStartTime() {

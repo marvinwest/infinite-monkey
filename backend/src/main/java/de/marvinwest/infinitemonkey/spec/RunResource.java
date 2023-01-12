@@ -22,11 +22,11 @@ public class RunResource {
 	@Autowired
 	private TextHitCalculationScheduler scheduler;
 	
-	// Is the optional persistanceThreshold actually persisted when in Request?
+	// make alphabet distinct string of distinct characters before persisting
 	@PostMapping(path = "/run/start",
 			consumes = MediaType.APPLICATION_JSON_VALUE,
 			produces = MediaType.APPLICATION_JSON_VALUE)
-	public MonkeysTypingRun startRun(@RequestBody MonkeysTypingRunRequest request) {
+	public RunResponse startRun(@RequestBody RunRequest request) {
 		final var targetText = request.getTargetText();
 		final var alphabet = request.getAlphabet();
 		MonkeysTypingRun newRun = new MonkeysTypingRun(targetText, alphabet);
@@ -35,13 +35,28 @@ public class RunResource {
 		newRun = runRepository.save(newRun);
 		scheduler.startRun(newRun);
 		
-		return newRun;
+		return buildResponseBody(newRun);
 	}
 	
 	// Does Not display Optional parameters that should be present.
 	@GetMapping(path = "/run")
-	public List<MonkeysTypingRun> fetchRuns() {
-		return runRepository.findAll();
+	public List<RunResponse> fetchRuns() {
+		return runRepository.findAll()
+				.stream()
+				.map(this::buildResponseBody)
+				.toList();
+	}
+	
+	public RunResponse buildResponseBody(MonkeysTypingRun run) {
+		final var id = run.getId();
+		final var targetText = run.getTargetText();
+		final var alphabet = run.getAlphabet();
+		
+		final var runResponse = new RunResponse(id, targetText, alphabet);
+		
+		run.maybePersistanceThreshold().ifPresent(runResponse::setPersistanceThreshold);
+		
+		return runResponse;
 	}
 	
 }

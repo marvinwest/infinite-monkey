@@ -2,15 +2,18 @@ package de.marvinwest.infinitemonkey.spec;
 
 import java.util.Optional;
 
-public class MonkeysTypingRunRequest {
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class RunRequest {
 
 	private String targetText;
 
 	private String alphabet;
 
+	@JsonProperty
 	private Integer persistanceThreshold;
 	
-	MonkeysTypingRunRequest() {
+	RunRequest() {
 	}
 
 	public String getTargetText() {
